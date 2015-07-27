@@ -1,5 +1,5 @@
 {
-	"name": "@dmail/promise",
+	"name": "@dmail/promise-es6",
 	"version": "0.0.1",
 	"description": "Promise polyfill",
 	"dependencies": {
