@@ -1,0 +1,8 @@
+{
+	"name": "@dmail/promise",
+	"version": "0.0.1",
+	"description": "Promise polyfill",
+	"dependencies": {
+		"@dmail/set-immediate": "*"
+	}
+}
