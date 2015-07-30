@@ -148,14 +148,7 @@
 				this.unhandled = global.setImmediate(function(){
 					this.unhandled = null;
 					if( !this.handled ){ // then() still never called
-						if( jsenv.platform.type === 'process' ){
-							if( process.listeners('unhandledRejection').length === 0 ){
-								var mess = value instanceof Error ? value.stack : value;
-								console.log('possibly unhandled rejection "' + mess + '" for promise', this);
-							}
-							process.emit('unhandledRejection', value, this);
-						}
-						else if( jsenv.platform.type === 'browser' ){
+						if( typeof window != 'undefined' ){
 							if( !window.onrejectionhandled ){
 								var mess = value instanceof Error ? value.stack : value;
 								console.log('possibly unhandled rejection "' + value + '" for promise', this);
@@ -163,6 +156,13 @@
 							else{
 								window.onrejectionhandled(value, this);
 							}
+						}
+						else if( typeof process != 'undefined' ){
+							if( process.listeners('unhandledRejection').length === 0 ){
+								var mess = value instanceof Error ? value.stack : value;
+								console.log('possibly unhandled rejection "' + mess + '" for promise', this);
+							}
+							process.emit('unhandledRejection', value, this);
 						}
 					}
 				}.bind(this));
