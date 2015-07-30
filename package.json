@@ -1,8 +1,8 @@
 {
-	"name": "@dmail/promise-es6",
-	"version": "0.0.1",
-	"description": "Promise polyfill",
-	"dependencies": {
-		"@dmail/set-immediate": "*"
-	}
+  "name": "@dmail/promise-es6",
+  "version": "0.0.2",
+  "description": "Promise polyfill",
+  "dependencies": {
+    "@dmail/set-immediate": "*"
+  }
 }
