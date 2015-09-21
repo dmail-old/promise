@@ -148,9 +148,11 @@
 				this.unhandled = global.setImmediate(function(){
 					this.unhandled = null;
 					if( !this.handled ){ // then() still never called
+						var mess;
+
 						if( typeof window != 'undefined' ){
 							if( !window.onrejectionhandled ){
-								var mess = value instanceof Error ? value.stack : value;
+								mess = value instanceof Error ? value.stack : value;
 								console.log('possibly unhandled rejection "' + value + '" for promise', this);
 							}
 							else{
@@ -159,7 +161,7 @@
 						}
 						else if( typeof process != 'undefined' ){
 							if( process.listeners('unhandledRejection').length === 0 ){
-								var mess = value instanceof Error ? value.stack : value;
+								mess = value instanceof Error ? value.stack : value;
 								console.log('possibly unhandled rejection "' + mess + '" for promise', this);
 							}
 							process.emit('unhandledRejection', value, this);
@@ -243,6 +245,8 @@
 
 	// que fait-on lorsque value est thenable?
 	Promise.resolve = function(value){
+		if( value instanceof Promise ) return value;
+
 		return new this(function resolveExecutor(resolve){
 			resolve(value);
 		});
