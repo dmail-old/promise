@@ -240,6 +240,25 @@
 		}
 	};
 
+	// make all properties non enumerable this way Promise.toJSON returns {}
+	/*
+	[
+		'value',
+		'state',
+		'pendingList',
+		//'onResolve',
+		//'onReject',
+		'pendingList',
+		//'resolver',
+		//'rejecter',
+		//'unhandled',
+		//'resolving',
+		//'handled'
+	].forEach(function(name){
+		Object.defineProperty(Promise, name, {enumerable: false, value: Promise[name]});
+	});
+*/
+
 	Promise.constructor.prototype = Promise;
 	Promise = Promise.constructor;
 

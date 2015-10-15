@@ -2,6 +2,7 @@
   "name": "@dmail/promise-es6",
   "version": "0.0.2",
   "description": "Promise polyfill",
+  "license": "UNLICENSED",
   "dependencies": {
     "@dmail/set-immediate": "*"
   }
