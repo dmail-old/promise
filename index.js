@@ -264,7 +264,11 @@
 
 	// que fait-on lorsque value est thenable?
 	Promise.resolve = function(value){
-		if( value instanceof Promise ) return value;
+		if( arguments.length > 0 ){
+			if( value instanceof this && value.constructor === this ){
+				return value;
+			}
+		}
 
 		return new this(function resolveExecutor(resolve){
 			resolve(value);
@@ -309,6 +313,12 @@
 			});
 		});
 	};
+
+	// prevent Promise.resolve from being call() or apply() just like chrome does
+	['resolve', 'reject', 'race', 'all'].forEach(function(name){
+		Promise[name].call = null;
+		Promise[name].apply = null;
+	});
 
 	Promise.polyfill = true;
 
