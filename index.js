@@ -126,7 +126,7 @@
             isResolved = promise.state === 'fulfilled';
             fn = isResolved ? this.onResolve : this.onReject;
 
-            if (fn !== null) {
+            if (fn !== null && fn !== undefined) {
                 try {
                     ret = fn(value);
                 } catch (e) {
