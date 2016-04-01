@@ -50,8 +50,8 @@
         var mess;
 
         if (typeof window !== 'undefined') {
-            if (window.unhandledRejection) {
-                window.unhandledRejection(value, promise);
+            if (window.onunhandledrejection) {
+                window.onunhandledrejection(value, promise);
             } else {
                 mess = value instanceof Error ? value.stack : value;
                 console.log('possibly unhandled rejection "' + value + '" for promise', promise);
@@ -67,8 +67,8 @@
 
     function triggerHandled(promise) {
         if (typeof window !== 'undefined') {
-            if (window.rejectionHandled) {
-                window.rejectionHandled(promise);
+            if (window.onrejectionhandled) {
+                window.onrejectionhandled(promise);
             }
         } else if (typeof process !== 'undefined') {
             process.emit('rejectionHandled', promise);
