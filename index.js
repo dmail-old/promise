@@ -1,282 +1,252 @@
 /* eslint-env browser, node */
 
 (function(global) {
-    function forOf(iterable, fn, bind) {
-        var method;
-        var iterator;
-        var next;
+    var forOf = (function() {
+        if (typeof Symbol === 'function' && 'iterator' in Symbol) {
+            return function forOf(iterable, fn, bind) {
+                var method;
+                var iterator;
+                var next;
 
-        method = iterable[Symbol.iterator];
+                method = iterable[Symbol.iterator];
 
-        if (typeof method !== 'function') {
-            throw new TypeError(iterable + 'is not iterable');
-        }
-
-        if (typeof fn !== 'function') {
-            throw new TypeError('second argument must be a function');
-        }
-
-        iterator = method.call(iterable);
-        next = iterator.next();
-        while (next.done === false) {
-            try {
-                fn.call(bind, next.value);
-            } catch (e) {
-                if (typeof iterator['return'] === 'function') { // eslint-disable-line dot-notation
-                    iterator['return'](); // eslint-disable-line dot-notation
+                if (typeof method !== 'function') {
+                    throw new TypeError(iterable + 'is not iterable');
                 }
-                throw e;
-            }
-            next = iterator.next();
+
+                if (typeof fn !== 'function') {
+                    throw new TypeError('second argument must be a function');
+                }
+
+                iterator = method.call(iterable);
+                next = iterator.next();
+                while (next.done === false) {
+                    try {
+                        fn.call(bind, next.value);
+                    } catch (e) {
+                        if (typeof iterator['return'] === 'function') { // eslint-disable-line dot-notation
+                            iterator['return'](); // eslint-disable-line dot-notation
+                        }
+                        throw e;
+                    }
+                    next = iterator.next();
+                }
+            };
         }
-    }
-
-    function callThenable(thenable, resolve, reject) {
-        var then;
-
-        try {
-            then = thenable.then;
-            then.call(thenable, resolve, reject);
-        } catch (e) {
-            reject(e);
-        }
-    }
-
-    function isThenable(object) {
-        return object ? typeof object.then === 'function' : false;
-    }
-
-    function triggerUnhandled(value, promise) {
-        var mess;
-
-        if (typeof window !== 'undefined') {
-            if (window.onunhandledrejection) {
-                window.onunhandledrejection(value, promise);
-            } else {
-                mess = value instanceof Error ? value.stack : value;
-                console.log('possibly unhandled rejection "' + value + '" for promise', promise);
+        return function forOf(iterable, fn, bind) {
+            for (var key in iterable) {
+                if (iterable.hasOwnProperty(key)) {
+                    fn.call(bind, iterable[key]);
+                }
             }
-        } else if (typeof process !== 'undefined') {
+        };
+    })();
+    var triggerUnhandled = (function() {
+        if (typeof window === 'object') {
+            return function tiggerUnhandled(value, promise) {
+                if (window.onunhandledrejection) {
+                    window.onunhandledrejection(value, promise);
+                } else {
+                    // var mess = value instanceof Error ? value.stack : value;
+                    console.log('possibly unhandled rejection "' + value + '" for promise', promise);
+                }
+            };
+        }
+        return function tiggerUnhandled(value, promise) {
             if (process.listeners('unhandledRejection').length === 0) {
-                mess = value instanceof Error ? value.stack : value;
+                var mess = value instanceof Error ? value.stack : value;
                 console.log('possibly unhandled rejection "' + mess + '" for promise', promise);
             }
             process.emit('unhandledRejection', value, promise);
+        };
+    })();
+    var triggerHandled = (function() {
+        if (typeof window === 'object') {
+            return function triggerHandled(promise) {
+                if (window.onrejectionhandled) {
+                    window.onrejectionhandled(promise);
+                }
+            };
         }
-    }
-
-    function triggerHandled(promise) {
-        if (typeof window !== 'undefined') {
-            if (window.onrejectionhandled) {
-                window.onrejectionhandled(promise);
-            }
-        } else if (typeof process !== 'undefined') {
+        return function triggerHandled(promise) {
             process.emit('rejectionHandled', promise);
+        };
+    })();
+    var asap = (function() {
+        if (typeof setImmediate === 'function') {
+            return setImmediate;
+        }
+        return setTimeout;
+    })();
+    function callThenable(thenable, onFulfill, onReject) {
+        var then;
+        try {
+            then = thenable.then;
+            then.call(thenable, onFulfill, onReject);
+        } catch (e) {
+            onReject(e);
         }
     }
-
-    var Promise = {
-        executor: function() {},
-        state: 'pending',
-        value: null,
-        pendingList: null,
-        onResolve: null,
-        onReject: null,
-
-        constructor: function(executor) {
-            if (arguments.length === 0) {
-                throw new Error('missing executor function');
+    function isThenable(object) {
+        if (object) {
+            return typeof object.then === 'function';
+        }
+        return false;
+    }
+    function bindAndOnce(fn, thisValue) {
+        var called = false;
+        return function boundAndCalledOnce() {
+            if (called === false) {
+                called = true;
+                return fn.apply(thisValue, arguments);
             }
-            if (typeof executor !== 'function') {
-                throw new TypeError('function expected as executor');
+        };
+    }
+    function noop() {}
+
+    function Thenable(executor) {
+        if (arguments.length === 0) {
+            throw new Error('missing executor function');
+        }
+        if (typeof executor !== 'function') {
+            throw new TypeError('function expected as executor');
+        }
+
+        this.status = 'pending';
+
+        if (executor !== noop) {
+            try {
+                executor(
+                    bindAndOnce(resolveThenable, this),
+                    bindAndOnce(rejectThenable, this)
+                );
+            } catch (e) {
+                rejectThenable.call(this, e);
             }
-
-            this.state = 'pending';
-            this.resolver = this.resolve.bind(this);
-            this.rejecter = this.reject.bind(this);
-
-            if (executor !== this.executor) {
-                try {
-                    executor(this.resolver, this.rejecter);
-                } catch (e) {
-                    this.reject(e);
-                }
-            }
-        },
-
+        }
+    }
+    Thenable.prototype = {
+        constructor: Thenable,
+        unhandledTriggered: false,
+        handled: false,
         toString: function() {
-            return '[object Promise]';
+            return '[object Thenable]';
         },
-
-        createPending: function(onResolve, onReject) {
-            var promise = new this.constructor(this.executor);
-            promise.onResolve = onResolve;
-            promise.onReject = onReject;
-            return promise;
-        },
-
-        adoptState: function(promise) {
-            var isResolved;
-            var fn;
-            var value;
-            var ret;
-            var error;
-
-            value = promise.value;
-            isResolved = promise.state === 'fulfilled';
-            fn = isResolved ? this.onResolve : this.onReject;
-
-            if (fn !== null && fn !== undefined) {
-                try {
-                    ret = fn(value);
-                } catch (e) {
-                    error = e;
-                }
-
-                if (error) {
-                    isResolved = false;
-                    value = error;
-                } else {
-                    isResolved = true;
-                    value = ret;
-                }
-            }
-
-            if (isResolved) {
-                this.resolve(value);
-            } else {
-                this.reject(value);
-            }
-        },
-
-        addPending: function(promise) {
-            this.pendingList = this.pendingList || [];
-            this.pendingList.push(promise);
-        },
-
-        startPending: function(pending) {
-            pending.adoptState(this);
-        },
-
-        // called when the promise is settled
-        clean: function() {
-            if (this.pendingList) {
-                this.pendingList.forEach(this.startPending, this);
-                this.pendingList = null;
-            }
-        },
-
-        onFulFilled: function(/* value */) {
-            this.clean();
-        },
-
-        onRejected: function(value) {
-            this.clean();
-
-            // then() never called
-            if (!this.handled) {
-                this.unhandled = global.setImmediate(function() {
-                    this.unhandled = null;
-                    if (!this.handled) { // then() still never called
-                        this.unhandledTriggered = true;
-                        triggerUnhandled(value, this);
-                    }
-                }.bind(this));
-            }
-        },
-
-        resolvedValueResolver: function(value) {
-            if (isThenable(value)) {
-                if (value === this) {
-                    this.reject(new TypeError('A promise cannot be resolved with itself'));
-                } else {
-                    callThenable(value, this.resolver, this.rejecter);
-                }
-            } else {
-                this.state = 'fulfilled';
-                this.resolving = false;
-                this.value = value;
-                this.onFulFilled(value);
-            }
-        },
-
-        resolve: function(value) {
-            if (this.state === 'pending') {
-                if (!this.resolving) {
-                    this.resolving = true;
-                    this.resolver = this.resolvedValueResolver.bind(this);
-                    this.resolver(value);
-                }
-            }
-        },
-
-        reject: function(value) {
-            if (this.state === 'pending') {
-                this.state = 'rejected';
-                this.value = value;
-                this.onRejected(value);
-            }
-        },
-
-        then: function(onResolve, onReject) {
-            if (onResolve && typeof onResolve !== 'function') {
-                throw new TypeError('onResolve must be a function ' + onResolve + ' given');
+        then: function(onFulfill, onReject) {
+            if (onFulfill && typeof onFulfill !== 'function') {
+                throw new TypeError('then first arg must be a function ' + onFulfill + ' given');
             }
             if (onReject && typeof onReject !== 'function') {
-                throw new TypeError('onReject must be a function ' + onReject + ' given');
+                throw new TypeError('then second arg must be a function ' + onReject + ' given');
             }
 
-            var pending = this.createPending(onResolve, onReject);
-
-            this.handled = true;
-
-            if (this.state === 'pending') {
-                this.addPending(pending);
-            } else {
-                global.setImmediate(function() {
-                    this.startPending(pending);
-                }.bind(this));
-
-                if (this.unhandledTriggered) {
-                    triggerHandled(this);
-                } else if (this.unhandled) {
-                    global.clearImmediate(this.unhandled);
-                    this.unhandled = null;
-                }
-            }
-
-            return pending;
+            var thenable = new this.constructor(noop);
+            var handler = {
+                thenable: thenable,
+                onFulfill: onFulfill || null,
+                onReject: onReject || null
+            };
+            handle(this, handler);
+            return thenable;
         },
-
-        catch: function(onreject) {
-            return this.then(null, onreject);
+        'catch': function(onReject) {
+            return this.then(null, onReject);
         }
     };
+    function resolveThenable(value) {
+        try {
+            if (isThenable(value)) {
+                if (value === this) {
+                    throw new TypeError('A promise cannot be resolved with itself');
+                } else {
+                    this.status = 'resolved';
+                    this.value = value;
+                    callThenable(
+                        value,
+                        bindAndOnce(resolveThenable, this),
+                        bindAndOnce(rejectThenable, this)
+                    );
+                }
+            } else {
+                this.status = 'fulfilled';
+                this.value = value;
+                settleThenable(this);
+            }
+        } catch (e) {
+            rejectThenable.call(this, e);
+        }
+    }
+    function rejectThenable(value) {
+        this.status = 'rejected';
+        this.value = value;
+        settleThenable(this);
+    }
+    function settleThenable(thenable) {
+        if (thenable.status === 'rejected' && thenable.handled === false) {
+            asap(function() {
+                if (!thenable.handled) {
+                    triggerUnhandled(thenable.value, thenable);
+                    thenable.unhandledTriggered = true;
+                }
+            });
+        }
 
-    // make all properties non enumerable this way Promise.toJSON returns {}
-    /*
-    [
-        'value',
-        'state',
-        'pendingList',
-        //'onResolve',
-        //'onReject',
-        'pendingList',
-        //'resolver',
-        //'rejecter',
-        //'unhandled',
-        //'resolving',
-        //'handled'
-    ].forEach(function(name){
-        Object.defineProperty(Promise, name, {enumerable: false, value: Promise[name]});
-    });
-*/
+        var hasPendingList = thenable.hasOwnProperty('pendingList');
+        if (hasPendingList) {
+            var pendingList = thenable.pendingList;
+            var i = 0;
+            var j = pendingList.length;
+            while (i < j) {
+                handle(thenable, pendingList[i]);
+                i++;
+            }
+            // on peut "supprimer" pendingList mais
+            pendingList.length = 0;
+        }
+    }
+    function handle(thenable, handler) {
+        // on doit s'inscrire sur la bonne pendingList
+        // on finis forcément par tomber sur un thenable en mode 'pending'
+        while (thenable.status === 'resolved') {
+            thenable = thenable.value;
+        }
+        if (thenable.unhandledTriggered) {
+            triggerHandled(thenable);
+        }
+        thenable.handled = true;
 
-    Promise.constructor.prototype = Promise;
-    Promise = Promise.constructor;
+        if (thenable.status === 'pending') {
+            if (thenable.hasOwnProperty('pendingList')) {
+                thenable.pendingList.push(handler);
+            } else {
+                thenable.pendingList = [handler];
+            }
+        } else {
+            asap(function() {
+                var isFulfilled = thenable.status === 'fulfilled';
+                var value = thenable.value;
+                var callback = isFulfilled ? handler.onFulfill : handler.onReject;
 
-    // que fait-on lorsque value est thenable?
-    Promise.resolve = function(value) {
+                if (callback !== null) {
+                    try {
+                        value = callback(value);
+                    } catch (e) {
+                        isFulfilled = false;
+                        value = e;
+                    }
+                }
+
+                var sourceThenable = handler.thenable;
+                if (isFulfilled) {
+                    resolveThenable.call(sourceThenable, value);
+                } else {
+                    rejectThenable.call(sourceThenable, value);
+                }
+            });
+        }
+    }
+
+    Thenable.resolve = function resolve(value) {
         if (arguments.length > 0) {
             if (value instanceof this && value.constructor === this) {
                 return value;
@@ -287,22 +257,20 @@
             resolve(value);
         });
     };
-
-    Promise.reject = function(value) {
+    Thenable.reject = function reject(value) {
         return new this(function rejectExecutor(resolve, reject) {
             reject(value);
         });
     };
-
-    Promise.all = function(iterable) {
+    Thenable.all = function all(iterable) {
         return new this(function allExecutor(resolve, reject) {
             var index = 0;
             var length = 0;
             var values = [];
-            var res = function(value, index) {
+            var resolveOne = function(value, index) {
                 if (isThenable(value)) {
                     callThenable(value, function(value) {
-                        res(value, index);
+                        resolveOne(value, index);
                     }, reject);
                 } else {
                     values[index] = value;
@@ -315,7 +283,7 @@
 
             forOf(iterable, function(value) {
                 length++;
-                res(value, index);
+                resolveOne(value, index);
                 index++;
             });
 
@@ -324,8 +292,7 @@
             }
         });
     };
-
-    Promise.race = function(iterable) {
+    Thenable.race = function race(iterable) {
         return new this(function(resolve, reject) {
             forOf(iterable, function(thenable) {
                 thenable.then(resolve, reject);
@@ -333,24 +300,8 @@
         });
     };
 
-    // prevent Promise.resolve from being call() or apply() just like chrome does
-    ['resolve', 'reject', 'race', 'all'].forEach(function(name) {
-        Promise[name].call = null;
-        Promise[name].apply = null;
-    });
-
-    Promise.polyfill = true;
-
-    var hasUnhandledRejectionHook = false;
-    if (global.Promise) {
-        if (global.Promise.polyfill) {
-            hasUnhandledRejectionHook = true;
-        }
-        // node has no unhandled rejection hook
-    }
-
-    // force Promise polyfill when the global.Promise has no unhandled rejection hook
-    if (!hasUnhandledRejectionHook || !global.Promise) {
-        global.Promise = Promise;
+    
+    if (!global.Promise) {
+        global.Promise = Thenable;
     }
 })(typeof window === 'undefined' ? global : window);
