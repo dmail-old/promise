@@ -158,9 +158,15 @@
             if (isThenable(value)) {
                 if (value === this) {
                     throw new TypeError('A promise cannot be resolved with itself');
-                } else {
+                } else if (value instanceof Thenable) {
                     this.status = 'resolved';
                     this.value = value;
+                    callThenable(
+                        value,
+                        bindAndOnce(resolveThenable, this),
+                        bindAndOnce(rejectThenable, this)
+                    );
+                } else {
                     callThenable(
                         value,
                         bindAndOnce(resolveThenable, this),
@@ -227,20 +233,21 @@
                 var value = thenable.value;
                 var callback = isFulfilled ? handler.onFulfill : handler.onReject;
 
-                if (callback !== null) {
+                 if (callback !== null) {
                     try {
                         value = callback(value);
+                        isFulfilled = true;
                     } catch (e) {
                         isFulfilled = false;
                         value = e;
                     }
                 }
 
-                var sourceThenable = handler.thenable;
+                var handlerThenable = handler.thenable;
                 if (isFulfilled) {
-                    resolveThenable.call(sourceThenable, value);
+                    resolveThenable.call(handlerThenable, value);
                 } else {
-                    rejectThenable.call(sourceThenable, value);
+                    rejectThenable.call(handlerThenable, value);
                 }
             });
         }
@@ -264,30 +271,36 @@
     };
     Thenable.all = function all(iterable) {
         return new this(function allExecutor(resolve, reject) {
-            var index = 0;
-            var length = 0;
+            var callCount = 0;
+            var resolvedCount = 0;
             var values = [];
             var resolveOne = function(value, index) {
-                if (isThenable(value)) {
-                    callThenable(value, function(value) {
-                        resolveOne(value, index);
-                    }, reject);
-                } else {
-                    values[index] = value;
-                    length--;
-                    if (length === 0) {
-                        resolve(values);
+                try {
+                    if (isThenable(value)) {
+                        callThenable(value, function(value) {
+                            resolveOne(value, index);
+                        }, reject);
+                    } else {
+                        values[index] = value;
+                        resolvedCount++;
+                        if (resolvedCount === callCount) {
+                            resolve(values);
+                        }
                     }
+                } catch (e) {
+                    reject(e);
                 }
             };
 
+            var index = 0;
             forOf(iterable, function(value) {
-                length++;
                 resolveOne(value, index);
+                callCount++;
                 index++;
             });
 
-            if (length === 0) {
+            if (resolvedCount === callCount) {
+                // ne peut se produire que si aucun valeur n'est thenable
                 resolve(values);
             }
         });
@@ -300,7 +313,7 @@
         });
     };
 
-    
+
     if (!global.Promise) {
         global.Promise = Thenable;
     }
